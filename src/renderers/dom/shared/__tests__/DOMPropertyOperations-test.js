@@ -1,383 +1,173 @@
 /**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) 2013-present, Facebook, Inc.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
  */
 
 'use strict';
 
-describe('DOMPropertyOperations', function() {
-  var DOMPropertyOperations;
-  var DOMProperty;
+describe('DOMPropertyOperations', () => {
+  var React;
+  var ReactDOM;
 
-  var mocks;
-
-  beforeEach(function() {
-    require('mock-modules').dumpCache();
-    var ReactDefaultInjection = require('ReactDefaultInjection');
-    ReactDefaultInjection.inject();
-
-    DOMPropertyOperations = require('DOMPropertyOperations');
-    DOMProperty = require('DOMProperty');
-
-    mocks = require('mocks');
+  beforeEach(() => {
+    jest.resetModules();
+    React = require('react');
+    ReactDOM = require('react-dom');
   });
 
-  describe('createMarkupForProperty', function() {
-
-    it('should create markup for simple properties', function() {
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'name',
-        'simple'
-      )).toBe('name="simple"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'name',
-        false
-      )).toBe('name="false"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'name',
-        null
-      )).toBe('');
+  describe('setValueForProperty', () => {
+    it('should set values as properties by default', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div title="Tip!" />, container);
+      expect(container.firstChild.title).toBe('Tip!');
     });
 
-    it('should work with the id attribute', function() {
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'id',
-        'simple'
-      )).toBe('id="simple"');
+    it('should set values as attributes if necessary', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div role="#" />, container);
+      expect(container.firstChild.getAttribute('role')).toBe('#');
+      expect(container.firstChild.role).toBeUndefined();
     });
 
-    it('should warn about incorrect casing', function() {
-      spyOn(console, 'error');
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'tabindex',
-        '1'
-      )).toBe(null);
-      expect(console.error.argsForCall.length).toBe(1);
-      expect(console.error.argsForCall[0][0]).toContain('tabIndex');
+    it('should set values as namespace attributes if necessary', () => {
+      var container = document.createElement('svg');
+      ReactDOM.render(<image xlinkHref="about:blank" />, container);
+      expect(
+        container.firstChild.getAttributeNS(
+          'http://www.w3.org/1999/xlink',
+          'href',
+        ),
+      ).toBe('about:blank');
     });
 
-    it('should warn about class', function() {
-      spyOn(console, 'error');
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'class',
-        'muffins'
-      )).toBe(null);
-      expect(console.error.argsForCall.length).toBe(1);
-      expect(console.error.argsForCall[0][0]).toContain('className');
+    it('should set values as boolean properties', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div disabled="disabled" />, container);
+      expect(container.firstChild.getAttribute('disabled')).toBe('');
+      ReactDOM.render(<div disabled={true} />, container);
+      expect(container.firstChild.getAttribute('disabled')).toBe('');
+      ReactDOM.render(<div disabled={false} />, container);
+      expect(container.firstChild.getAttribute('disabled')).toBe(null);
+      ReactDOM.render(<div disabled={true} />, container);
+      ReactDOM.render(<div disabled={null} />, container);
+      expect(container.firstChild.getAttribute('disabled')).toBe(null);
+      ReactDOM.render(<div disabled={true} />, container);
+      ReactDOM.render(<div disabled={undefined} />, container);
+      expect(container.firstChild.getAttribute('disabled')).toBe(null);
     });
 
-    it('should create markup for boolean properties', function() {
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'checked',
-        'simple'
-      )).toBe('checked=""');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'checked',
-        true
-      )).toBe('checked=""');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'checked',
-        false
-      )).toBe('');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'scoped',
-        true
-      )).toBe('scoped=""');
-    });
-
-    it('should create markup for booleanish properties', function() {
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        'simple'
-      )).toBe('download="simple"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        true
-      )).toBe('download=""');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        'true'
-      )).toBe('download="true"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        false
-      )).toBe('');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        'false'
-      )).toBe('download="false"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        undefined
-      )).toBe('');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        null
-      )).toBe('');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'download',
-        0
-      )).toBe('download="0"');
-    });
-
-    it('should create markup for custom attributes', function() {
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'aria-label',
-        'simple'
-      )).toBe('aria-label="simple"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'aria-label',
-        false
-      )).toBe('aria-label="false"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'aria-label',
-        null
-      )).toBe('');
-    });
-
-    it('should create markup for numeric properties', function() {
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'start',
-        5
-      )).toBe('start="5"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'start',
-        0
-      )).toBe('start="0"');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'size',
-        0
-      )).toBe('');
-
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'size',
-        1
-      )).toBe('size="1"');
-    });
-
-  });
-
-  describe('createMarkupForProperty', function() {
-
-    it('should allow custom properties on web components', function() {
-      expect(DOMPropertyOperations.createMarkupForCustomAttribute(
-        'awesomeness',
-        5
-      )).toBe('awesomeness="5"');
-
-      expect(DOMPropertyOperations.createMarkupForCustomAttribute(
-        'dev',
-        'jim'
-      )).toBe('dev="jim"');
-    });
-  });
-
-  describe('setValueForProperty', function() {
-    var stubNode;
-
-    beforeEach(function() {
-      stubNode = document.createElement('div');
-    });
-
-    it('should set values as properties by default', function() {
-      DOMPropertyOperations.setValueForProperty(stubNode, 'title', 'Tip!');
-      expect(stubNode.title).toBe('Tip!');
-    });
-
-    it('should set values as attributes if necessary', function() {
-      DOMPropertyOperations.setValueForProperty(stubNode, 'role', '#');
-      expect(stubNode.getAttribute('role')).toBe('#');
-      expect(stubNode.role).toBeUndefined();
-    });
-
-    it('should set values as namespace attributes if necessary', function() {
-      spyOn(stubNode, 'setAttributeNS');
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'xlinkHref',
-        'about:blank'
-      );
-      expect(stubNode.setAttributeNS.argsForCall.length).toBe(1);
-      expect(stubNode.setAttributeNS.argsForCall[0])
-        .toEqual(['http://www.w3.org/1999/xlink', 'xlink:href', 'about:blank']);
-    });
-
-    it('should convert attribute values to string first', function() {
+    it('should convert attribute values to string first', () => {
       // Browsers default to this behavior, but some test environments do not.
       // This ensures that we have consistent behavior.
       var obj = {
         toString: function() {
-          return '<html>';
+          return 'css-class';
         },
       };
-      DOMPropertyOperations.setValueForProperty(stubNode, 'role', obj);
-      expect(stubNode.getAttribute('role')).toBe('<html>');
+
+      var container = document.createElement('div');
+      ReactDOM.render(<div className={obj} />, container);
+      expect(container.firstChild.getAttribute('class')).toBe('css-class');
     });
 
-    it('should remove for falsey boolean properties', function() {
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'allowFullScreen',
-        false
-      );
-      expect(stubNode.hasAttribute('allowFullScreen')).toBe(false);
+    it('should not remove empty attributes for special properties', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<input value="" />, container);
+      expect(container.firstChild.getAttribute('value')).toBe('');
+      expect(container.firstChild.value).toBe('');
     });
 
-    it('should remove when setting custom attr to null', function() {
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'data-foo',
-        'bar'
-      );
-      expect(stubNode.hasAttribute('data-foo')).toBe(true);
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'data-foo',
-        null
-      );
-      expect(stubNode.hasAttribute('data-foo')).toBe(false);
+    it('should remove for falsey boolean properties', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div allowFullScreen={false} />, container);
+      expect(container.firstChild.hasAttribute('allowFullScreen')).toBe(false);
     });
 
-    it('should use mutation method where applicable', function() {
-      var foobarSetter = mocks.getMockFunction();
-      // inject foobar DOM property
-      DOMProperty.injection.injectDOMPropertyConfig({
-        Properties: {foobar: null},
-        DOMMutationMethods: {
-          foobar: foobarSetter,
-        },
-      });
-
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'foobar',
-        'cows say moo'
-      );
-
-      expect(foobarSetter.mock.calls.length).toBe(1);
-      expect(foobarSetter.mock.calls[0][0]).toBe(stubNode);
-      expect(foobarSetter.mock.calls[0][1]).toBe('cows say moo');
+    it('should remove when setting custom attr to null', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div data-foo="bar" />, container);
+      expect(container.firstChild.hasAttribute('data-foo')).toBe(true);
+      ReactDOM.render(<div data-foo={null} />, container);
+      expect(container.firstChild.hasAttribute('data-foo')).toBe(false);
     });
 
-    it('should set className to empty string instead of null', function() {
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'className',
-        'selected'
-      );
-      expect(stubNode.className).toBe('selected');
-
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'className',
-        null
-      );
+    it('should set className to empty string instead of null', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div className="selected" />, container);
+      expect(container.firstChild.className).toBe('selected');
+      ReactDOM.render(<div className={null} />, container);
       // className should be '', not 'null' or null (which becomes 'null' in
       // some browsers)
-      expect(stubNode.className).toBe('');
+      expect(container.firstChild.className).toBe('');
+      expect(container.firstChild.getAttribute('class')).toBe(null);
     });
 
-    it('should remove property properly even with different name', function() {
-      // Suppose 'foobar' is a property that corresponds to the underlying
-      // 'className' property:
-      DOMProperty.injection.injectDOMPropertyConfig({
-        Properties: {foobar: DOMProperty.injection.MUST_USE_PROPERTY},
-        DOMPropertyNames: {
-          foobar: 'className',
-        },
-      });
-
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'foobar',
-        'selected'
-      );
-      expect(stubNode.className).toBe('selected');
-
-      DOMPropertyOperations.setValueForProperty(
-        stubNode,
-        'foobar',
-        null
-      );
-      // className should be '', not 'null' or null (which becomes 'null' in
-      // some browsers)
-      expect(stubNode.className).toBe('');
+    it('should remove property properly for boolean properties', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div hidden={true} />, container);
+      expect(container.firstChild.hasAttribute('hidden')).toBe(true);
+      ReactDOM.render(<div hidden={false} />, container);
+      expect(container.firstChild.hasAttribute('hidden')).toBe(false);
     });
-
   });
 
-  describe('injectDOMPropertyConfig', function() {
-    it('should support custom attributes', function() {
-      // foobar does not exist yet
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'foobar',
-        'simple'
-      )).toBe(null);
+  describe('value mutation method', function() {
+    it('should update an empty attribute to zero', function() {
+      var container = document.createElement('div');
+      ReactDOM.render(
+        <input type="radio" value="" onChange={function() {}} />,
+        container,
+      );
+      spyOn(container.firstChild, 'setAttribute');
+      ReactDOM.render(
+        <input type="radio" value={0} onChange={function() {}} />,
+        container,
+      );
+      expect(container.firstChild.setAttribute.calls.count()).toBe(1);
+    });
 
-      // foo-* does not exist yet
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'foo-xyz',
-        'simple'
-      )).toBe(null);
+    it('should always assign the value attribute for non-inputs', function() {
+      var container = document.createElement('div');
+      ReactDOM.render(<progress />, container);
+      spyOn(container.firstChild, 'setAttribute');
+      ReactDOM.render(<progress value={30} />, container);
+      ReactDOM.render(<progress value="30" />, container);
+      expect(container.firstChild.setAttribute.calls.count()).toBe(2);
+    });
+  });
 
-      // inject foobar DOM property
-      DOMProperty.injection.injectDOMPropertyConfig({
-        isCustomAttribute: function(name) {
-          return name.indexOf('foo-') === 0;
-        },
-        Properties: {foobar: null},
-      });
+  describe('deleteValueForProperty', () => {
+    it('should remove attributes for normal properties', () => {
+      var container = document.createElement('div');
+      ReactDOM.render(<div title="foo" />, container);
+      expect(container.firstChild.getAttribute('title')).toBe('foo');
+      ReactDOM.render(<div />, container);
+      expect(container.firstChild.getAttribute('title')).toBe(null);
+    });
 
-      // Ensure old attributes still work
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'name',
-        'simple'
-      )).toBe('name="simple"');
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'data-name',
-        'simple'
-      )).toBe('data-name="simple"');
-
-      // foobar should work
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'foobar',
-        'simple'
-      )).toBe('foobar="simple"');
-
-      // foo-* should work
-      expect(DOMPropertyOperations.createMarkupForProperty(
-        'foo-xyz',
-        'simple'
-      )).toBe('foo-xyz="simple"');
-
-      // It should complain about double injections.
-      expect(function() {
-        DOMProperty.injection.injectDOMPropertyConfig(
-          {Properties: {foobar: null}}
-        );
-      }).toThrow();
+    it('should not remove attributes for special properties', () => {
+      var container = document.createElement('div');
+      spyOn(console, 'error');
+      ReactDOM.render(
+        <input type="text" value="foo" onChange={function() {}} />,
+        container,
+      );
+      expect(container.firstChild.getAttribute('value')).toBe('foo');
+      expect(container.firstChild.value).toBe('foo');
+      ReactDOM.render(
+        <input type="text" onChange={function() {}} />,
+        container,
+      );
+      expect(container.firstChild.getAttribute('value')).toBe('foo');
+      expect(container.firstChild.value).toBe('foo');
+      expect(console.error.calls.count()).toBe(1);
+      expect(console.error.calls.argsFor(0)[0]).toContain(
+        'A component is changing a controlled input of type text to be uncontrolled',
+      );
     });
   });
 });

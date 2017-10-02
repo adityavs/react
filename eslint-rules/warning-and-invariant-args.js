@@ -1,10 +1,8 @@
 /**
- * Copyright 2015, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
 */
@@ -17,7 +15,7 @@
  */
 
 module.exports = function(context) {
-  // we also allow literal strings and concatinated literal strings
+  // we also allow literal strings and concatenated literal strings
   function getLiteralString(node) {
     if (node.type === 'Literal' && typeof node.value === 'string') {
       return node.value;
@@ -67,7 +65,7 @@ module.exports = function(context) {
         );
         return;
       }
-      // count the number of formating substitutions, plus the first two args
+      // count the number of formatting substitutions, plus the first two args
       var expectedNArgs = (format.match(/%s/g) || []).length + 2;
       if (node.arguments.length !== expectedNArgs) {
         context.report(

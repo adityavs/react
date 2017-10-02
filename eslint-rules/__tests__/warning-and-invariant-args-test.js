@@ -1,21 +1,19 @@
 /**
- * Copyright 2015, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) 2015-present, Facebook, Inc.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @emails react-core
  */
 
 'use strict';
 
-var eslint = require('eslint');
-var ESLintTester = require('eslint-tester');
-var eslintTester = new ESLintTester(eslint.linter);
+var rule = require('../warning-and-invariant-args');
+var RuleTester = require('eslint').RuleTester;
+var ruleTester = new RuleTester();
 
-eslintTester.addRuleTest('eslint-rules/warning-and-invariant-args', {
+ruleTester.run('eslint-rules/warning-and-invariant-args', rule, {
   valid: [
     "warning(true, 'hello, world');",
     "warning(true, 'expected %s, got %s', 42, 24);",
@@ -100,4 +98,3 @@ eslintTester.addRuleTest('eslint-rules/warning-and-invariant-args', {
     },
   ],
 });
-

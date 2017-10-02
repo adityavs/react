@@ -1,7 +1,7 @@
 ---
 title: "Community Round-up #25"
 layout: post
-author: matthewjohnston4
+author: [matthewjohnston4]
 ---
 
 ## React 101
@@ -20,7 +20,7 @@ Black Mutt Media [takes us through their usage of React](http://blackmuttmedia.c
 
 Our own [Sebastian Markbåge](https://github.com/sebmarkbage) was on the [Web Platform Podcast](http://thewebplatform.libsyn.com/31-building-with-reactjs) to have a chat about all aspects of React.
 
-<iframe style="border: none" src="//html5-player.libsyn.com/embed/episode/id/3370114/height/75/width/200/theme/standard-mini/direction/no/autoplay/no/autonext/no/thumbnail/yes/preload/no/no_addthis/no/" height="26" width="650" scrolling="no" allowfullscreen="" webkitallowfullscreen="" mozallowfullscreen="" oallowfullscreen="" msallowfullscreen=""></iframe>
+<iframe style="border: none" src="//html5-player.libsyn.com/embed/episode/id/3370114/height/75/width/200/theme/standard-mini/direction/no/autoplay/no/autonext/no/thumbnail/yes/preload/no/no_addthis/no/" height="26" width="100%" scrolling="no" allowfullscreen="" webkitallowfullscreen="" mozallowfullscreen="" oallowfullscreen="" msallowfullscreen=""></iframe>
 
 ## Community Additions
 
@@ -44,7 +44,7 @@ A team from New Zealand called [Atomic](https://atomic.io/) is [building web and
 
 [Polarr](https://github.com/Polarrco) have rebuilt [their browser-based photo editor](http://polarrist.tumblr.com/post/111290422225/polarr-photo-editor-2-0-alpha-is-here) with React.
 
-<center><a href="http://polarrist.tumblr.com/post/111290422225/polarr-photo-editor-2-0-alpha-is-here"><img src="/react/img/blog/polarr.jpg"></a></center>
+<center><a href="http://polarrist.tumblr.com/post/111290422225/polarr-photo-editor-2-0-alpha-is-here"><img src="../img/blog/polarr.jpg"></a></center>
 
 ## It's F8!
 

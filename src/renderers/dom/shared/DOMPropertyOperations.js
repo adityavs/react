@@ -1,27 +1,31 @@
 /**
- * Copyright 2013-2015, Facebook, Inc.
- * All rights reserved.
+ * Copyright (c) 2013-present, Facebook, Inc.
  *
- * This source code is licensed under the BSD-style license found in the
- * LICENSE file in the root directory of this source tree. An additional grant
- * of patent rights can be found in the PATENTS file in the same directory.
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
  *
  * @providesModule DOMPropertyOperations
- * @typechecks static-only
  */
 
 'use strict';
 
 var DOMProperty = require('DOMProperty');
 
-var quoteAttributeValueForBrowser = require('quoteAttributeValueForBrowser');
-var warning = require('warning');
+if (__DEV__) {
+  var warning = require('fbjs/lib/warning');
+}
 
-// Simplified subset
-var VALID_ATTRIBUTE_NAME_REGEX = /^[a-zA-Z_][a-zA-Z_\.\-\d]*$/;
+// isAttributeNameSafe() is currently duplicated in DOMMarkupOperations.
+// TODO: Find a better place for this.
+var VALID_ATTRIBUTE_NAME_REGEX = new RegExp(
+  '^[' +
+    DOMProperty.ATTRIBUTE_NAME_START_CHAR +
+    '][' +
+    DOMProperty.ATTRIBUTE_NAME_CHAR +
+    ']*$',
+);
 var illegalAttributeNameCache = {};
 var validatedAttributeNameCache = {};
-
 function isAttributeNameSafe(attributeName) {
   if (validatedAttributeNameCache.hasOwnProperty(attributeName)) {
     return true;
@@ -34,120 +38,116 @@ function isAttributeNameSafe(attributeName) {
     return true;
   }
   illegalAttributeNameCache[attributeName] = true;
-  warning(
-    false,
-    'Invalid attribute name: `%s`',
-    attributeName
-  );
+  if (__DEV__) {
+    warning(false, 'Invalid attribute name: `%s`', attributeName);
+  }
   return false;
 }
 
+// shouldIgnoreValue() is currently duplicated in DOMMarkupOperations.
+// TODO: Find a better place for this.
 function shouldIgnoreValue(propertyInfo, value) {
-  return value == null ||
+  return (
+    value == null ||
     (propertyInfo.hasBooleanValue && !value) ||
     (propertyInfo.hasNumericValue && isNaN(value)) ||
-    (propertyInfo.hasPositiveNumericValue && (value < 1)) ||
-    (propertyInfo.hasOverloadedBooleanValue && value === false);
-}
-
-if (__DEV__) {
-  var reactProps = {
-    children: true,
-    dangerouslySetInnerHTML: true,
-    key: true,
-    ref: true,
-  };
-  var warnedProperties = {};
-
-  var warnUnknownProperty = function(name) {
-    if (reactProps.hasOwnProperty(name) && reactProps[name] ||
-        warnedProperties.hasOwnProperty(name) && warnedProperties[name]) {
-      return;
-    }
-
-    warnedProperties[name] = true;
-    var lowerCasedName = name.toLowerCase();
-
-    // data-* attributes should be lowercase; suggest the lowercase version
-    var standardName = (
-      DOMProperty.isCustomAttribute(lowerCasedName) ?
-        lowerCasedName :
-      DOMProperty.getPossibleStandardName.hasOwnProperty(lowerCasedName) ?
-        DOMProperty.getPossibleStandardName[lowerCasedName] :
-        null
-    );
-
-    // For now, only warn when we have a suggested correction. This prevents
-    // logging too much when using transferPropsTo.
-    warning(
-      standardName == null,
-      'Unknown DOM property %s. Did you mean %s?',
-      name,
-      standardName
-    );
-
-  };
+    (propertyInfo.hasPositiveNumericValue && value < 1) ||
+    (propertyInfo.hasOverloadedBooleanValue && value === false)
+  );
 }
 
 /**
  * Operations for dealing with DOM properties.
  */
 var DOMPropertyOperations = {
+  setAttributeForID: function(node, id) {
+    node.setAttribute(DOMProperty.ID_ATTRIBUTE_NAME, id);
+  },
 
-  /**
-   * Creates markup for the ID property.
-   *
-   * @param {string} id Unescaped ID.
-   * @return {string} Markup string.
-   */
-  createMarkupForID: function(id) {
-    return DOMProperty.ID_ATTRIBUTE_NAME + '=' +
-      quoteAttributeValueForBrowser(id);
+  setAttributeForRoot: function(node) {
+    node.setAttribute(DOMProperty.ROOT_ATTRIBUTE_NAME, '');
   },
 
   /**
-   * Creates markup for a property.
-   *
-   * @param {string} name
-   * @param {*} value
-   * @return {?string} Markup string, or null if the property was invalid.
+   * Get the value for a property on a node. Only used in DEV for SSR validation.
+   * The "expected" argument is used as a hint of what the expected value is.
+   * Some properties have multiple equivalent values.
    */
-  createMarkupForProperty: function(name, value) {
-    var propertyInfo = DOMProperty.properties.hasOwnProperty(name) ?
-        DOMProperty.properties[name] : null;
-    if (propertyInfo) {
-      if (shouldIgnoreValue(propertyInfo, value)) {
-        return '';
+  getValueForProperty: function(node, name, expected) {
+    if (__DEV__) {
+      var propertyInfo = DOMProperty.getPropertyInfo(name);
+      if (propertyInfo) {
+        var mutationMethod = propertyInfo.mutationMethod;
+        if (mutationMethod || propertyInfo.mustUseProperty) {
+          return node[propertyInfo.propertyName];
+        } else {
+          var attributeName = propertyInfo.attributeName;
+
+          var stringValue = null;
+
+          if (propertyInfo.hasOverloadedBooleanValue) {
+            if (node.hasAttribute(attributeName)) {
+              var value = node.getAttribute(attributeName);
+              if (value === '') {
+                return true;
+              }
+              if (shouldIgnoreValue(propertyInfo, expected)) {
+                return value;
+              }
+              if (value === '' + expected) {
+                return expected;
+              }
+              return value;
+            }
+          } else if (node.hasAttribute(attributeName)) {
+            if (shouldIgnoreValue(propertyInfo, expected)) {
+              // We had an attribute but shouldn't have had one, so read it
+              // for the error message.
+              return node.getAttribute(attributeName);
+            }
+            if (propertyInfo.hasBooleanValue) {
+              // If this was a boolean, it doesn't matter what the value is
+              // the fact that we have it is the same as the expected.
+              return expected;
+            }
+            // Even if this property uses a namespace we use getAttribute
+            // because we assume its namespaced name is the same as our config.
+            // To use getAttributeNS we need the local name which we don't have
+            // in our config atm.
+            stringValue = node.getAttribute(attributeName);
+          }
+
+          if (shouldIgnoreValue(propertyInfo, expected)) {
+            return stringValue === null ? expected : stringValue;
+          } else if (stringValue === '' + expected) {
+            return expected;
+          } else {
+            return stringValue;
+          }
+        }
       }
-      var attributeName = propertyInfo.attributeName;
-      if (propertyInfo.hasBooleanValue ||
-          (propertyInfo.hasOverloadedBooleanValue && value === true)) {
-        return attributeName + '=""';
-      }
-      return attributeName + '=' + quoteAttributeValueForBrowser(value);
-    } else if (DOMProperty.isCustomAttribute(name)) {
-      if (value == null) {
-        return '';
-      }
-      return name + '=' + quoteAttributeValueForBrowser(value);
-    } else if (__DEV__) {
-      warnUnknownProperty(name);
     }
-    return null;
   },
 
   /**
-   * Creates markup for a custom property.
-   *
-   * @param {string} name
-   * @param {*} value
-   * @return {string} Markup string, or empty string if the property was invalid.
+   * Get the value for a attribute on a node. Only used in DEV for SSR validation.
+   * The third argument is used as a hint of what the expected value is. Some
+   * attributes have multiple equivalent values.
    */
-  createMarkupForCustomAttribute: function(name, value) {
-    if (!isAttributeNameSafe(name) || value == null) {
-      return '';
+  getValueForAttribute: function(node, name, expected) {
+    if (__DEV__) {
+      if (!isAttributeNameSafe(name)) {
+        return;
+      }
+      if (!node.hasAttribute(name)) {
+        return expected === undefined ? undefined : null;
+      }
+      var value = node.getAttribute(name);
+      if (value === '' + expected) {
+        return expected;
+      }
+      return value;
     }
-    return name + '=' + quoteAttributeValueForBrowser(value);
   },
 
   /**
@@ -158,39 +158,47 @@ var DOMPropertyOperations = {
    * @param {*} value
    */
   setValueForProperty: function(node, name, value) {
-    var propertyInfo = DOMProperty.properties.hasOwnProperty(name) ?
-        DOMProperty.properties[name] : null;
-    if (propertyInfo) {
+    var propertyInfo = DOMProperty.getPropertyInfo(name);
+
+    if (propertyInfo && DOMProperty.shouldSetAttribute(name, value)) {
       var mutationMethod = propertyInfo.mutationMethod;
       if (mutationMethod) {
         mutationMethod(node, value);
       } else if (shouldIgnoreValue(propertyInfo, value)) {
-        this.deleteValueForProperty(node, name);
-      } else if (propertyInfo.mustUseAttribute) {
+        DOMPropertyOperations.deleteValueForProperty(node, name);
+        return;
+      } else if (propertyInfo.mustUseProperty) {
+        // Contrary to `setAttribute`, object properties are properly
+        // `toString`ed by IE8/9.
+        node[propertyInfo.propertyName] = value;
+      } else {
         var attributeName = propertyInfo.attributeName;
         var namespace = propertyInfo.attributeNamespace;
         // `setAttribute` with objects becomes only `[object]` in IE8/9,
         // ('' + value) makes it output the correct toString()-value.
         if (namespace) {
           node.setAttributeNS(namespace, attributeName, '' + value);
+        } else if (
+          propertyInfo.hasBooleanValue ||
+          (propertyInfo.hasOverloadedBooleanValue && value === true)
+        ) {
+          node.setAttribute(attributeName, '');
         } else {
           node.setAttribute(attributeName, '' + value);
         }
-      } else {
-        var propName = propertyInfo.propertyName;
-        // Must explicitly cast values for HAS_SIDE_EFFECTS-properties to the
-        // property type before comparing; only `value` does and is string.
-        if (!propertyInfo.hasSideEffects ||
-            ('' + node[propName]) !== ('' + value)) {
-          // Contrary to `setAttribute`, object properties are properly
-          // `toString`ed by IE8/9.
-          node[propName] = value;
-        }
       }
-    } else if (DOMProperty.isCustomAttribute(name)) {
-      DOMPropertyOperations.setValueForAttribute(node, name, value);
-    } else if (__DEV__) {
-      warnUnknownProperty(name);
+    } else {
+      DOMPropertyOperations.setValueForAttribute(
+        node,
+        name,
+        DOMProperty.shouldSetAttribute(name, value) ? value : null,
+      );
+      return;
+    }
+
+    if (__DEV__) {
+      var payload = {};
+      payload[name] = value;
     }
   },
 
@@ -203,6 +211,21 @@ var DOMPropertyOperations = {
     } else {
       node.setAttribute(name, '' + value);
     }
+
+    if (__DEV__) {
+      var payload = {};
+      payload[name] = value;
+    }
+  },
+
+  /**
+   * Deletes an attributes from a node.
+   *
+   * @param {DOMElement} node
+   * @param {string} name
+   */
+  deleteValueForAttribute: function(node, name) {
+    node.removeAttribute(name);
   },
 
   /**
@@ -212,32 +235,25 @@ var DOMPropertyOperations = {
    * @param {string} name
    */
   deleteValueForProperty: function(node, name) {
-    var propertyInfo = DOMProperty.properties.hasOwnProperty(name) ?
-        DOMProperty.properties[name] : null;
+    var propertyInfo = DOMProperty.getPropertyInfo(name);
     if (propertyInfo) {
       var mutationMethod = propertyInfo.mutationMethod;
       if (mutationMethod) {
         mutationMethod(node, undefined);
-      } else if (propertyInfo.mustUseAttribute) {
-        node.removeAttribute(propertyInfo.attributeName);
-      } else {
+      } else if (propertyInfo.mustUseProperty) {
         var propName = propertyInfo.propertyName;
-        var defaultValue = DOMProperty.getDefaultValueForProperty(
-          node.nodeName,
-          propName
-        );
-        if (!propertyInfo.hasSideEffects ||
-            ('' + node[propName]) !== defaultValue) {
-          node[propName] = defaultValue;
+        if (propertyInfo.hasBooleanValue) {
+          node[propName] = false;
+        } else {
+          node[propName] = '';
         }
+      } else {
+        node.removeAttribute(propertyInfo.attributeName);
       }
-    } else if (DOMProperty.isCustomAttribute(name)) {
+    } else {
       node.removeAttribute(name);
-    } else if (__DEV__) {
-      warnUnknownProperty(name);
     }
   },
-
 };
 
 module.exports = DOMPropertyOperations;

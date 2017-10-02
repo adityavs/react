@@ -8,27 +8,27 @@ var IS_MOBILE = (
     || navigator.userAgent.match(/Windows Phone/i)
 );
 
-var CodeMirrorEditor = React.createClass({
+var CodeMirrorEditor = createReactClass({
   propTypes: {
-    lineNumbers: React.PropTypes.bool,
-    onChange: React.PropTypes.func
+    lineNumbers: PropTypes.bool,
+    onChange: PropTypes.func,
   },
   getDefaultProps: function() {
     return {
-      lineNumbers: false
+      lineNumbers: false,
     };
   },
   componentDidMount: function() {
     if (IS_MOBILE) return;
 
-    this.editor = CodeMirror.fromTextArea(React.findDOMNode(this.refs.editor), {
-      mode: 'javascript',
+    this.editor = CodeMirror.fromTextArea(this.refs.editor, {
+      mode: 'jsx',
       lineNumbers: this.props.lineNumbers,
       lineWrapping: true,
       smartIndent: false,  // javascript mode does bad things with jsx indents
       matchBrackets: true,
       theme: 'solarized-light',
-      readOnly: this.props.readOnly
+      readOnly: this.props.readOnly,
     });
     this.editor.on('change', this.handleChange);
   },
@@ -60,7 +60,7 @@ var CodeMirrorEditor = React.createClass({
         {editor}
       </div>
     );
-  }
+  },
 });
 
 var selfCleaningTimeout = {
@@ -71,31 +71,37 @@ var selfCleaningTimeout = {
   setTimeout: function() {
     clearTimeout(this.timeoutID);
     this.timeoutID = setTimeout.apply(null, arguments);
-  }
+  },
 };
 
-var ReactPlayground = React.createClass({
+var ReactPlayground = createReactClass({
   mixins: [selfCleaningTimeout],
 
   MODES: {JSX: 'JSX', JS: 'JS'}, //keyMirror({JSX: true, JS: true}),
 
   propTypes: {
-    codeText: React.PropTypes.string.isRequired,
-    transformer: React.PropTypes.func,
-    renderCode: React.PropTypes.bool,
-    showCompiledJSTab: React.PropTypes.bool,
-    showLineNumbers: React.PropTypes.bool,
-    editorTabTitle: React.PropTypes.string
+    codeText: PropTypes.string.isRequired,
+    transformer: PropTypes.func,
+    renderCode: PropTypes.bool,
+    showCompiledJSTab: PropTypes.bool,
+    showLineNumbers: PropTypes.bool,
+    editorTabTitle: PropTypes.string,
   },
 
   getDefaultProps: function() {
     return {
-      transformer: function(code) {
-        return JSXTransformer.transform(code).code;
+      transformer: function(code, options) {
+        var presets = ['react'];
+        if (!options || !options.skipES2015Transform) {
+          presets.push('es2015');
+        }
+        return Babel.transform(code, {
+          presets
+        }).code;
       },
       editorTabTitle: 'Live JSX Editor',
       showCompiledJSTab: true,
-      showLineNumbers: false
+      showLineNumbers: false,
     };
   },
 
@@ -115,15 +121,15 @@ var ReactPlayground = React.createClass({
     this.setState({mode: mode});
   },
 
-  compileCode: function() {
-    return this.props.transformer(this.state.code);
+  compileCode: function(options) {
+    return this.props.transformer(this.state.code, options);
   },
 
   render: function() {
     var isJS = this.state.mode === this.MODES.JS;
     var compiledCode = '';
     try {
-      compiledCode = this.compileCode();
+      compiledCode = this.compileCode({skipES2015Transform: true});
     } catch (err) {}
 
     var JSContent =
@@ -194,29 +200,35 @@ var ReactPlayground = React.createClass({
   },
 
   executeCode: function() {
-    var mountNode = React.findDOMNode(this.refs.mount);
+    var mountNode = this.refs.mount;
 
     try {
-      React.unmountComponentAtNode(mountNode);
+      ReactDOM.unmountComponentAtNode(mountNode);
     } catch (e) { }
 
     try {
-      var compiledCode = this.compileCode();
+      var compiledCode;
       if (this.props.renderCode) {
-        React.render(
+        compiledCode = this.compileCode({skipES2015Transform: true});
+        ReactDOM.render(
           <CodeMirrorEditor codeText={compiledCode} readOnly={true} />,
           mountNode
         );
       } else {
+        compiledCode = this.compileCode({skipES2015Transform: false});
         eval(compiledCode);
       }
     } catch (err) {
+      // Babel errors are preformatted, runtime errors are not.
+      const errorMessage = err._babel ?
+        <pre style={{overflowX: 'auto'}} className="playgroundError">{err.toString()}</pre> :
+        <div className="playgroundError">{err.toString()}</div>;
       this.setTimeout(function() {
-        React.render(
-          <div className="playgroundError">{err.toString()}</div>,
+        ReactDOM.render(
+          errorMessage,
           mountNode
         );
       }, 500);
     }
-  }
+  },
 });
