@@ -1,34 +1,24 @@
 'use strict';
 
-const basename = require('path').basename;
-const fs = require('fs');
-const join = require('path').join;
-const resolve = require('path').resolve;
+const {existsSync, readdirSync, unlinkSync} = require('fs');
 const Bundles = require('./bundles');
-const asyncCopyTo = require('./utils').asyncCopyTo;
+const {
+  asyncCopyTo,
+  asyncExecuteCommand,
+  asyncExtractTar,
+  asyncRimRaf,
+} = require('./utils');
 
-const UMD_DEV = Bundles.bundleTypes.UMD_DEV;
-const UMD_PROD = Bundles.bundleTypes.UMD_PROD;
-const NODE_DEV = Bundles.bundleTypes.NODE_DEV;
-const NODE_PROD = Bundles.bundleTypes.NODE_PROD;
-const FB_DEV = Bundles.bundleTypes.FB_DEV;
-const FB_PROD = Bundles.bundleTypes.FB_PROD;
-const RN_DEV = Bundles.bundleTypes.RN_DEV;
-const RN_PROD = Bundles.bundleTypes.RN_PROD;
-
-const facebookWWW = 'facebook-www';
-// these files need to be copied to the facebook-www build
-const facebookWWWSrcDependencies = [
-  'src/renderers/dom/shared/eventPlugins/TapEventPlugin.js',
-];
-
-// these files need to be copied to the react-native build
-const reactNativeSrcDependencies = [
-  // TODO: copy this to RN repository and delete from React
-  'src/renderers/native/PooledClass.js',
-  'src/renderers/shared/fiber/isomorphic/ReactTypes.js',
-  'src/renderers/native/ReactNativeTypes.js',
-];
+const {
+  UMD_DEV,
+  UMD_PROD,
+  NODE_DEV,
+  NODE_PROD,
+  FB_DEV,
+  FB_PROD,
+  RN_DEV,
+  RN_PROD,
+} = Bundles.bundleTypes;
 
 function getPackageName(name) {
   if (name.indexOf('/') !== -1) {
@@ -37,131 +27,127 @@ function getPackageName(name) {
   return name;
 }
 
-function createReactNativeBuild() {
-  // create the react-native folder for FB bundles
-  fs.mkdirSync(join('build', 'react-native'));
-  // create the react-native shims folder for FB shims
-  fs.mkdirSync(join('build', 'react-native', 'shims'));
-  // copy in all the shims from build/rollup/shims/react-native
-  const from = join('scripts', 'rollup', 'shims', 'react-native');
-  const to = join('build', 'react-native', 'shims');
-
-  return asyncCopyTo(from, to).then(() => {
-    let promises = [];
-    // we also need to copy over some specific files from src
-    // defined in reactNativeSrcDependencies
-    for (const srcDependency of reactNativeSrcDependencies) {
-      promises.push(
-        asyncCopyTo(resolve(srcDependency), join(to, basename(srcDependency)))
-      );
-    }
-    return Promise.all(promises);
-  });
-}
-
-function createFacebookWWWBuild() {
-  // create the facebookWWW folder for FB bundles
-  fs.mkdirSync(join('build', facebookWWW));
-  // create the facebookWWW shims folder for FB shims
-  fs.mkdirSync(join('build', facebookWWW, 'shims'));
-  // copy in all the shims from build/rollup/shims/facebook-www
-  const from = join('scripts', 'rollup', 'shims', facebookWWW);
-  const to = join('build', facebookWWW, 'shims');
-
-  return asyncCopyTo(from, to).then(() => {
-    let promises = [];
-    // we also need to copy over some specific files from src
-    // defined in facebookWWWSrcDependencies
-    for (const srcDependency of facebookWWWSrcDependencies) {
-      promises.push(
-        asyncCopyTo(resolve(srcDependency), join(to, basename(srcDependency)))
-      );
-    }
-    return Promise.all(promises);
-  });
-}
-
-function copyBundleIntoNodePackage(packageName, filename, bundleType) {
-  const packageDirectory = resolve(`./build/packages/${packageName}`);
-
-  if (fs.existsSync(packageDirectory)) {
-    let from = resolve(`./build/${filename}`);
-    let to = `${packageDirectory}/${filename}`;
-    // for UMD bundles we have to move the files into a umd directory
-    // within the package directory. we also need to set the from
-    // to be the root build from directory
-    if (bundleType === UMD_DEV || bundleType === UMD_PROD) {
-      const distDirectory = `${packageDirectory}/umd`;
-      // create a dist directory if not created
-      if (!fs.existsSync(distDirectory)) {
-        fs.mkdirSync(distDirectory);
+function getBundleOutputPaths(bundleType, filename, packageName) {
+  switch (bundleType) {
+    case NODE_DEV:
+    case NODE_PROD:
+      return [`build/packages/${packageName}/cjs/${filename}`];
+    case UMD_DEV:
+    case UMD_PROD:
+      return [
+        `build/packages/${packageName}/umd/${filename}`,
+        `build/dist/${filename}`,
+      ];
+    case FB_DEV:
+    case FB_PROD:
+      return [`build/facebook-www/${filename}`];
+    case RN_DEV:
+    case RN_PROD:
+      switch (packageName) {
+        case 'react-rt-renderer':
+          return [`build/react-rt/${filename}`];
+        case 'react-cs-renderer':
+          return [`build/react-cs/${filename}`];
+        case 'react-native-renderer':
+          return [`build/react-native/${filename}`];
+        default:
+          throw new Error('Unknown RN package.');
       }
-      from = resolve(`./build/dist/${filename}`);
-      to = `${packageDirectory}/umd/${filename}`;
-    }
-    // for NODE bundles we have to move the files into a cjs directory
-    // within the package directory. we also need to set the from
-    // to be the root build from directory
-    if (bundleType === NODE_DEV || bundleType === NODE_PROD) {
-      const distDirectory = `${packageDirectory}/cjs`;
-      // create a dist directory if not created
-      if (!fs.existsSync(distDirectory)) {
-        fs.mkdirSync(distDirectory);
-      }
-      to = `${packageDirectory}/cjs/${filename}`;
-    }
-    return asyncCopyTo(from, to).then(() => {
-      // delete the old file if this is a not a UMD bundle
-      if (bundleType !== UMD_DEV && bundleType !== UMD_PROD) {
-        fs.unlinkSync(from);
-      }
-    });
-  } else {
-    return Promise.resolve();
+    default:
+      throw new Error('Unknown bundle type.');
   }
 }
 
-function copyNodePackageTemplate(packageName) {
-  const from = resolve(`./packages/${packageName}`);
-  const to = resolve(`./build/packages/${packageName}`);
-
-  // if the package directory already exists, we skip copying to it
-  if (!fs.existsSync(to) && fs.existsSync(from)) {
-    return asyncCopyTo(from, to).then(() =>
-      asyncCopyTo(resolve('./LICENSE'), `${to}/LICENSE`)
-    );
-  } else {
-    return Promise.resolve();
-  }
+async function copyWWWShims() {
+  await asyncCopyTo(
+    `${__dirname}/shims/facebook-www`,
+    'build/facebook-www/shims'
+  );
 }
 
-function createNodePackage(bundleType, packageName, filename) {
-  // the only case where we don't want to copy the package is for FB bundles
-  if (bundleType !== FB_DEV && bundleType !== FB_PROD) {
-    return copyNodePackageTemplate(packageName).then(() =>
-      copyBundleIntoNodePackage(packageName, filename, bundleType)
-    );
-  }
-  return Promise.resolve();
+async function copyRNShims() {
+  await Promise.all([
+    // React Native
+    asyncCopyTo(`${__dirname}/shims/react-native`, 'build/react-native/shims'),
+    asyncCopyTo(
+      require.resolve('shared/ReactTypes.js'),
+      'build/react-native/shims/ReactTypes.js'
+    ),
+    asyncCopyTo(
+      require.resolve('react-native-renderer/src/ReactNativeTypes.js'),
+      'build/react-native/shims/ReactNativeTypes.js'
+    ),
+    // React Native CS
+    asyncCopyTo(
+      require.resolve('react-cs-renderer/src/ReactNativeCSTypes.js'),
+      'build/react-cs/shims/ReactNativeCSTypes.js'
+    ),
+    // React Native RT
+    asyncCopyTo(
+      require.resolve('react-rt-renderer/src/ReactNativeRTTypes.js'),
+      'build/react-rt/shims/ReactNativeRTTypes.js'
+    ),
+  ]);
 }
 
-function getPackageDestination(config, bundleType, filename) {
-  let dest = config.destDir + filename;
+async function copyAllShims() {
+  await Promise.all([copyWWWShims(), copyRNShims()]);
+}
 
-  if (bundleType === FB_DEV || bundleType === FB_PROD) {
-    dest = `${config.destDir}${facebookWWW}/${filename}`;
-  } else if (bundleType === UMD_DEV || bundleType === UMD_PROD) {
-    dest = `${config.destDir}dist/${filename}`;
-  } else if (bundleType === RN_DEV || bundleType === RN_PROD) {
-    dest = `${config.destDir}react-native/${filename}`;
+function getTarOptions(tgzName, packageName) {
+  // Files inside the `npm pack`ed archive start
+  // with "package/" in their paths. We'll undo
+  // this during extraction.
+  const CONTENTS_FOLDER = 'package';
+  return {
+    src: tgzName,
+    dest: `build/packages/${packageName}`,
+    tar: {
+      entries: [CONTENTS_FOLDER],
+      map(header) {
+        if (header.name.indexOf(CONTENTS_FOLDER + '/') === 0) {
+          header.name = header.name.substring(CONTENTS_FOLDER.length + 1);
+        }
+      },
+    },
+  };
+}
+
+async function prepareNpmPackage(name) {
+  await Promise.all([
+    asyncCopyTo('LICENSE', `build/packages/${name}/LICENSE`),
+    asyncCopyTo(
+      `packages/${name}/package.json`,
+      `build/packages/${name}/package.json`
+    ),
+    asyncCopyTo(
+      `packages/${name}/README.md`,
+      `build/packages/${name}/README.md`
+    ),
+    asyncCopyTo(`packages/${name}/npm`, `build/packages/${name}`),
+  ]);
+  const tgzName = (await asyncExecuteCommand(
+    `npm pack build/packages/${name}`
+  )).trim();
+  await asyncRimRaf(`build/packages/${name}`);
+  await asyncExtractTar(getTarOptions(tgzName, name));
+  unlinkSync(tgzName);
+}
+
+async function prepareNpmPackages() {
+  if (!existsSync('build/packages')) {
+    // We didn't build any npm packages.
+    return;
   }
-  return dest;
+  const builtPackageFolders = readdirSync('build/packages').filter(
+    dir => dir.charAt(0) !== '.'
+  );
+  await Promise.all(builtPackageFolders.map(prepareNpmPackage));
 }
 
 module.exports = {
-  getPackageDestination,
-  createNodePackage,
+  copyAllShims,
   getPackageName,
-  createFacebookWWWBuild,
-  createReactNativeBuild,
+  getBundleOutputPaths,
+  prepareNpmPackages,
 };
